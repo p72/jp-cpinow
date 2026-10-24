@@ -21,6 +21,14 @@ class Forecast:
     targets: pd.DataFrame                # rows = months T+1..T+3, cols = target keys (y/y %)
     levels: pd.DataFrame                 # target index levels (anchored)
     info: dict = field(default_factory=dict)
+    actual: pd.DataFrame | None = None   # published y/y up to T (公表値)
+
+    def recent(self, n: int = 3) -> pd.DataFrame:
+        """Published y/y of the last n months (falls back to y/y from the indices)."""
+        months = [self.T - pd.offsets.MonthBegin(k) for k in range(n - 1, -1, -1)]
+        if self.actual is not None and len(self.actual):
+            return self.actual.reindex(months)
+        return pd.DataFrame({k: cpi.yoy(self.levels[k].loc[:self.T]) for k in self.levels}).reindex(months)
 
     def contributions(self, target: str = "headline") -> pd.DataFrame:
         """Leaf contributions (pt) to the target's y/y in each month."""
@@ -122,4 +130,5 @@ def run(ds: Dataset, scenario: str = "base", use_tokyo: bool = True, use_veg: bo
         yy[key] = cpi.yoy(a)
     levels = pd.DataFrame(levels)
     targets = pd.DataFrame(yy).loc[months]
-    return Forecast(T=T, asof=ds.asof, leaf_levels=LL, targets=targets, levels=levels, info=info)
+    return Forecast(T=T, asof=ds.asof, leaf_levels=LL, targets=targets, levels=levels, info=info,
+                    actual=ds.yoy)

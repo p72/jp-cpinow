@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from . import bands, config, policy, release
+from . import bands, config, cpi, policy, release
 from .sources import estat
 
 # categorical slots (fixed order) — reference palette
@@ -47,7 +47,7 @@ def _fmt(v):
 
 
 def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFrame | None = None,
-                news_label: str = "", inputs: list | None = None, actual: pd.DataFrame | None = None,
+                news_label: str = "", inputs: list | None = None,
                 model_name: str = "v1"):
     jp = _font()
     asof = pd.Timestamp(fc.asof or pd.Timestamp.today()).normalize()
@@ -56,7 +56,7 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
 
     fig = plt.figure(figsize=(16, 9), dpi=120)
     fig.patch.set_facecolor("white")
-    gs = fig.add_gridspec(3, 2, height_ratios=[0.25, 0.40, 0.35], width_ratios=[1.0, 1.0],
+    gs = fig.add_gridspec(3, 2, height_ratios=[0.31, 0.37, 0.32], width_ratios=[1.0, 1.0],
                           left=0.06, right=0.98, top=0.955, bottom=0.075, hspace=0.62, wspace=0.13)
 
     # ------------------------------------------------------------------ header
@@ -71,39 +71,40 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
     if lo == lo:
         ax.text(0.135, 0.02, f"90%区間\n{lo:+.1f} 〜 {hi:+.1f}", fontsize=9.5, color=MUTED,
                 va="bottom", linespacing=1.3)
-    # 5 × 3 table
-    x0, cw = 0.25, 0.115
-    ax.text(x0, 0.68, "系列", fontsize=10, color=INK2, weight="bold", va="center")
+    # table: recent official figures (3 months up to T) + forecasts (h=1..3)
+    hist = [fc.T - pd.offsets.MonthBegin(k) for k in (2, 1, 0)]
+    act = fc.recent(3)
+    x0, xl, ca, cf = 0.25, 0.345, 0.06, 0.12      # label, first value column, widths
+    xa = [xl + (j + 1) * ca for j in range(3)]             # right edges, official
+    xf = [xa[-1] + 0.02 + (j + 1) * cf for j in range(3)]  # right edges, forecast
+    ax.add_patch(plt.Rectangle((xa[-1] + 0.01, -0.05), xf[-1] - xa[-1], 0.86,
+                               color="#f2f2f0", zorder=0, transform=ax.transAxes))
+    ax.text(x0, 0.70, "前年同月比（%）", fontsize=9, color=INK2, va="center")
+    for j, m in enumerate(hist):
+        ax.text(xa[j], 0.70, f"実績\n{m.year % 100}年{m.month}月", fontsize=9.5, color=INK2, ha="right",
+                va="center", linespacing=1.3)
     for j, m in enumerate(months):
-        ax.text(x0 + 0.13 + (j + 1) * cw, 0.68, f"{m.year % 100}年{m.month}月（h={j + 1}）", fontsize=10,
-                color=INK2, weight="bold", ha="right", va="center")
-    ax.plot([x0, x0 + 0.13 + 3 * cw], [0.62, 0.62], color=INK2, lw=0.8)
+        ax.text(xf[j], 0.70, f"予測 h={j + 1}\n{m.year % 100}年{m.month}月", fontsize=9.5,
+                color=BLUE, weight="bold", ha="right", va="center", linespacing=1.3)
+    ax.plot([x0, xf[-1]], [0.585, 0.585], color=INK2, lw=0.8)
     for i, (k, code, _) in enumerate(config.TARGETS):
-        y = 0.53 - i * 0.125
+        y = 0.50 - i * 0.11
         ax.text(x0, y, config.SHORT[k], fontsize=11, color=INK, va="center",
                 weight="bold" if k == "core" else "normal")
+        for j, m in enumerate(hist):
+            v = act.loc[m, k] if m in act.index else np.nan
+            ax.text(xa[j], y, _fmt(v), fontsize=11, color=INK2, ha="right", va="center")
         for j, m in enumerate(months):
             v = fc.targets.loc[m, k]
             l, h_ = bands.interval(k, j + 1, point, v)
-            xr = x0 + 0.13 + (j + 1) * cw
-            ax.text(xr - 0.052, y, f"{v + 0.0:+.1f}", fontsize=12, color=INK, ha="right", va="center",
+            ax.text(xf[j] - 0.055, y, f"{v + 0.0:+.1f}", fontsize=12, color=INK, ha="right", va="center",
                     weight="bold")
             if l == l:
-                ax.text(xr, y, f"[{l:+.1f}, {h_:+.1f}]", fontsize=8.5, color=MUTED, ha="right", va="center")
-    sub = [f"データ時点 {asof:%Y-%m-%d}", f"最新の公表月 {fc.T.year}年{fc.T.month}月（全国）",
-           f"モデル {model_name}", "［ ］は90%区間（擬似リアルタイム検証の", "誤差分位点。政策の不確実性は含まない）"]
-    ax.text(1.0, 0.0, "\n".join(sub), fontsize=9, color=INK2, va="bottom", ha="right",
-            linespacing=1.5)
-    if news is not None and len(news) > 1:
-        col = f"{m1:%Y-%m}"
-        if col in news:
-            body = news[news["統計"] != "合計"].copy()
-            body = body.reindex(body[col].abs().sort_values(ascending=False).index).head(4)
-            tot = float(news.loc[news["統計"] == "合計", col].iloc[0])
-            lines = [f"コア{m1.month}月の改定 {news_label}：{tot:+.2f}pt"]
-            lines += [f"  {r['統計']} {r[col]:+.2f}" for _, r in body.iterrows()]
-            ax.text(1.0, 0.98, "\n".join(lines), fontsize=9.5, color=INK2, va="top", ha="right",
-                    linespacing=1.45)
+                ax.text(xf[j], y, f"[{l:+.1f}, {h_:+.1f}]", fontsize=8.5, color=MUTED, ha="right", va="center")
+    ax.text(1.0, 1.0, f"データ時点 {asof:%Y-%m-%d}　モデル {model_name}", fontsize=9, color=INK2,
+            va="top", ha="right")
+    ax.text(x0, -0.09, "実績は総務省の公表値（前年同月比）。予測の［ ］は90%区間（擬似リアルタイム検証の誤差分位点。"
+            "政策の不確実性は含まない）", fontsize=8.5, color=MUTED, va="top")
 
     # --------------------------------------------------------- contributions
     ax = fig.add_subplot(gs[1, 0])
@@ -182,6 +183,18 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
         ax.text(0.55, y, row[1], fontsize=10, color=INK2, va="top")
         y -= 0.034
         ax.plot([0, 1], [y + 0.006, y + 0.006], color=GRID, lw=0.6)
+    if news is not None and len(news) > 1 and f"{m1:%Y-%m}" in news:
+        col = f"{m1:%Y-%m}"
+        body = news[news["統計"] != "合計"].copy()
+        body = body.reindex(body[col].abs().sort_values(ascending=False).index).head(3)
+        tot = float(news.loc[news["統計"] == "合計", col].iloc[0])
+        y -= 0.02
+        ax.text(0, y, f"前回からの改定（コア{m1.month}月, {news_label}）：{tot:+.2f}pt", fontsize=11,
+                color=INK, weight="bold", va="top")
+        y -= 0.035
+        for _, r in body.iterrows():
+            ax.text(0, y, f"・{r['統計']}  {r[col]:+.2f}", fontsize=9, color=INK2, va="top")
+            y -= 0.028
     # policy calendar for the horizon
     y -= 0.02
     ax.text(0, y, "予測期間中の制度要因（policy.csv）", fontsize=12, color=INK, weight="bold", va="top")

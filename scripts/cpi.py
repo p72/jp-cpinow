@@ -31,6 +31,19 @@ def fetch_raw(area: str = config.AREA_NAT) -> pd.DataFrame:
     return wide.sort_index()
 
 
+def fetch_yoy(area: str = config.AREA_NAT) -> pd.DataFrame:
+    """Published y/y (%) of the five targets (表章項目 3 = 前年同月比). Columns = target keys.
+    The official figure is computed from unrounded indices, so it can differ by ±0.1
+    from a y/y recomputed from the published (0.1-rounded) indices."""
+    codes = {c: k for k, c, _ in config.TARGETS}
+    d = estat().get_stats_df(config.ESTAT_CPI, cdCat01=",".join(codes), cdArea=area, cdTab="3",
+                             monthly=False)
+    d = d[(d["time_code"].str[4:6] == "00") & (d["time_code"].str[6:8] != "00")]
+    d["date"] = pd.to_datetime(d["time_code"].str[:4] + "-" + d["time_code"].str[6:8] + "-01")
+    wide = d.pivot_table(index="date", columns="cat01_code", values="value", aggfunc="first")
+    return wide.rename(columns=codes)[[k for k, _, _ in config.TARGETS]].sort_index()
+
+
 def leaf_index(raw: pd.DataFrame, area: str = "nat") -> pd.DataFrame:
     """Leaf index levels on the 2025 = 100 basis. Residual leaves are the weighted
     difference of official indices divided by the residual weight (exact within the

@@ -18,7 +18,9 @@ PERIODS = {"2015-19": ("2015-01-01", "2019-12-01"), "2022-26": ("2022-01-01", "2
 
 
 def _actual(ds: Dataset) -> pd.DataFrame:
-    return pd.DataFrame({k: cpi.yoy(ds.nat[c]) for k, c, _ in config.TARGETS})
+    """Truth = the published y/y (e-Stat 前年同月比); y/y from the indices only as fallback."""
+    calc = pd.DataFrame({k: cpi.yoy(ds.nat[c]) for k, c, _ in config.TARGETS})
+    return calc if ds.yoy is None else ds.yoy.reindex(calc.index).combine_first(calc)
 
 
 def _seas_modules():

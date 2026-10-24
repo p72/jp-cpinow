@@ -16,6 +16,7 @@ class Dataset:
     boj: pd.DataFrame          # upstream monthly (BOJ)
     weekly: pd.DataFrame       # enecho weekly retail prices
     veg: pd.DataFrame | None = None   # MAFF weekly vegetable retail prices (2021-)
+    yoy: pd.DataFrame | None = None   # published y/y of the five targets (national)
     asof: pd.Timestamp | None = None
 
     # ------------------------------------------------------------ derived
@@ -37,7 +38,8 @@ class Dataset:
             b.loc[b.index > release.last_fx(a), "usdjpy"] = np.nan
         w = self.weekly[self.weekly.index + pd.Timedelta(days=2) <= a]
         v = None if self.veg is None else self.veg[self.veg.index + pd.Timedelta(days=9) <= a]
-        return replace(self, nat=nat, tky=tky, boj=b.dropna(how="all"), weekly=w, veg=v, asof=a)
+        yy = None if self.yoy is None else self.yoy.loc[: release.last_nat(a)]
+        return replace(self, nat=nat, tky=tky, boj=b.dropna(how="all"), weekly=w, veg=v, yoy=yy, asof=a)
 
 
 def fetch(verbose: bool = True) -> Dataset:
@@ -46,6 +48,11 @@ def fetch(verbose: bool = True) -> Dataset:
             print(m)
     nat = cpi.fetch_raw(config.AREA_NAT)
     log(f"[data] 全国CPI {nat.index[-1]:%Y-%m}")
+    try:
+        yy = cpi.fetch_yoy(config.AREA_NAT)
+    except Exception as ex:
+        print(f"[data] 前年同月比（公表値） failed: {ex}")
+        yy = None
     tky = cpi.fetch_raw(config.AREA_TKY)
     log(f"[data] 東京都区部CPI {tky.index[-1]:%Y-%m}")
     try:
@@ -66,7 +73,7 @@ def fetch(verbose: bool = True) -> Dataset:
     except Exception as ex:
         print(f"[data] maff failed: {ex}")
         v = None
-    return Dataset(nat=nat, tky=tky, boj=b, weekly=w, veg=v)
+    return Dataset(nat=nat, tky=tky, boj=b, weekly=w, veg=v, yoy=yy)
 
 
 def to_frames(ds: Dataset) -> dict:
@@ -74,10 +81,13 @@ def to_frames(ds: Dataset) -> dict:
     f = {"nat:": ds.nat, "tky:": ds.tky, "boj:": ds.boj, "wk:": ds.weekly}
     if ds.veg is not None:
         f["veg:"] = ds.veg
+    if ds.yoy is not None:
+        f["yoy:"] = ds.yoy
     return f
 
 
 def from_frames(frames: dict) -> Dataset:
-    v = frames.get("veg:")
+    v, yy = frames.get("veg:"), frames.get("yoy:")
     return Dataset(nat=frames["nat:"], tky=frames["tky:"], boj=frames["boj:"],
-                   weekly=frames["wk:"], veg=v if v is not None and len(v) else None)
+                   weekly=frames["wk:"], veg=v if v is not None and len(v) else None,
+                   yoy=yy if yy is not None and len(yy) else None)

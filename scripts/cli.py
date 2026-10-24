@@ -24,7 +24,7 @@ MODEL = "v1"
 
 
 def _load_vintage(asof) -> data.Dataset:
-    frames = {p: vintage.load_asof(asof, p) for p in ("nat:", "tky:", "boj:", "wk:", "veg:")}
+    frames = {p: vintage.load_asof(asof, p) for p in ("nat:", "tky:", "boj:", "wk:", "veg:", "yoy:")}
     if frames["nat:"].empty:
         raise SystemExit(f"no stored vintage on or before {asof}")
     return data.from_frames(frames).cut(pd.Timestamp(asof) + pd.Timedelta(hours=23))
@@ -58,6 +58,34 @@ def _inputs(ds: data.Dataset, fc) -> list:
     return rows
 
 
+def _result_table(fc, point: str, n_hist: int = 3, text: bool = True) -> pd.DataFrame:
+    """Rows = the last `n_hist` published months (実績) + T+1..T+3 (予測); columns = 5 series.
+    text=True: printable strings with 90% intervals; False: numbers + 区分/90%区間 columns."""
+    act = fc.recent(n_hist)
+    rows = []
+    for m in act.index:
+        r = {"月": f"{m:%Y-%m}", "区分": "実績"}
+        for k in fc.targets.columns:
+            r[config.SHORT[k]] = act.loc[m, k]
+        rows.append(r)
+    for h, m in enumerate(fc.targets.index, start=1):
+        r = {"月": f"{m:%Y-%m}", "区分": f"予測 h={h}"}
+        for k in fc.targets.columns:
+            v = fc.targets.loc[m, k]
+            lo, hi = bands.interval(k, h, point, v)
+            if text:
+                r[config.SHORT[k]] = f"{v:+.1f} [{lo:+.1f}, {hi:+.1f}]"
+            else:
+                r[config.SHORT[k]] = v
+                r[f"{config.SHORT[k]}_90%下限"] = round(lo, 2)
+                r[f"{config.SHORT[k]}_90%上限"] = round(hi, 2)
+        rows.append(r)
+    df = pd.DataFrame(rows).set_index(["月", "区分"])
+    if text:
+        df = df.apply(lambda c: [v if isinstance(v, str) else f"{v:+.1f}" for v in c])
+    return df
+
+
 def cmd_forecast(a):
     if a.asof:
         ds = _load_vintage(a.asof)
@@ -73,12 +101,7 @@ def cmd_forecast(a):
     fc = forecast.run(ds)
     point = bands.point_of(ds.asof, fc.T)
     print(f"最新の公表月（全国）: {fc.T:%Y-%m}　時点 {point}")
-    tab = fc.targets.copy()
-    for k in tab.columns:
-        tab[k] = [f"{v:+.1f} [{bands.interval(k, h, point, v)[0]:+.1f}, {bands.interval(k, h, point, v)[1]:+.1f}]"
-                  for h, v in enumerate(fc.targets[k], start=1)]
-    tab.columns = [config.SHORT[k] for k in tab.columns]
-    tab.index = [f"{m:%Y-%m}" for m in tab.index]
+    tab = _result_table(fc, point)
     print(tab.to_string())
 
     nw, nw_label = None, ""
@@ -98,7 +121,7 @@ def cmd_forecast(a):
     if a.out:
         os.makedirs(a.out, exist_ok=True)
         stamp = f"{pd.Timestamp(ds.asof):%Y%m%d}"
-        fc.targets.round(1).to_csv(os.path.join(a.out, "forecast.csv"), encoding="utf-8-sig")
+        _result_table(fc, point, text=False).to_csv(os.path.join(a.out, "forecast.csv"), encoding="utf-8-sig")
         fc.contributions("headline").round(3).to_csv(os.path.join(a.out, "forecast_contributions.csv"),
                                                     encoding="utf-8-sig")
         if nw is not None:
