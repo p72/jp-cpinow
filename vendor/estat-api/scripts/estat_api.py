@@ -50,7 +50,7 @@ import urllib.request
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 DEFAULT_APP_ID = ""  # jp-gdpnow: set the ESTAT_APP_ID environment variable (GitHub Secret)
-APP_ID = os.environ.get("ESTAT_APP_ID") or DEFAULT_APP_ID
+APP_ID = (os.environ.get("ESTAT_APP_ID") or DEFAULT_APP_ID).strip()  # pasted secrets often carry a newline
 BASE = "https://api.e-stat.go.jp/rest/3.0/app/json/"
 FILE_DOWNLOAD = "https://www.e-stat.go.jp/stat-search/file-download"
 # getDataCatalog FORMAT → fileKind of the download URL. 0/2/4 verified 2026-10-18
@@ -109,7 +109,7 @@ class EStatError(Exception):
 
 def get_app_id() -> str:
     """ESTAT_APP_ID env var (read at call time) or the built-in default."""
-    return os.environ.get("ESTAT_APP_ID") or APP_ID
+    return (os.environ.get("ESTAT_APP_ID") or APP_ID).strip()
 
 
 def _log(msg: str) -> None:

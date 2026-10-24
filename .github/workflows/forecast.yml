@@ -42,6 +42,11 @@ jobs:
       - name: 依存パッケージ
         run: pip install -r requirements.txt
 
+      - name: Secret の確認（値は表示しない）
+        run: |
+          v="$(printf '%s' "$ESTAT_APP_ID" | tr -d '[:space:]')"
+          echo "::notice title=ESTAT_APP_ID::設定=$([ -n "$ESTAT_APP_ID" ] && echo あり || echo なし)　空白除去後の文字数=${#v}（e-Stat のアプリケーションIDは通常40文字）"
+
       - name: 予測
         run: |
           set -o pipefail
