@@ -32,9 +32,9 @@ jobs:
       ESTAT_APP_ID: ${{ secrets.ESTAT_APP_ID }}
       MPLBACKEND: Agg
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -44,10 +44,22 @@ jobs:
 
       - name: 予測
         run: |
+          set -o pipefail
           FLAG="--only-if-new"
           if [ "${{ inputs.force }}" = "true" ]; then FLAG=""; fi
           mkdir -p output
-          python -m scripts.cli forecast $FLAG --out output 2>&1 | tee output/last_run.log
+          python -m scripts.cli forecast $FLAG --out output 2>&1 | grep -v -E "page [0-9]+:|findfont" | tee output/last_run.log
+
+      # 実行ログの要点を注釈（annotation）に出す。Actions の画面のほか API でも読める。
+      - name: ログの要点
+        if: always()
+        run: |
+          enc() { sed -e 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}'; }
+          [ -f output/last_run.log ] || exit 0
+          echo "::notice title=取得・予測::$(grep -E '^\[|最新の公表月|^20[0-9][0-9]-[0-9][0-9]' output/last_run.log | head -25 | enc)"
+          if grep -qE 'Traceback|Error|failed' output/last_run.log; then
+            echo "::warning title=エラー・警告::$(grep -n -E 'Traceback|Error|failed' output/last_run.log | head -5 | enc)%0A---%0A$(tail -25 output/last_run.log | enc)"
+          fi
 
       - name: 結果をコミット
         run: |
