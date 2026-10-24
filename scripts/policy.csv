@@ -1,0 +1,62 @@
+kind,leaf,start,end,value,announced,region,scenario,note,source
+# kind: subsidy_elec=電気の値引き単価(円/kWh,低圧) / subsidy_gas=都市ガスの値引き単価(円/m3) / levy=再エネ賦課金(円/kWh)
+#       cap=小売価格の上限目安(円/L) / event=制度変更(value=前月比インパクト%、空欄は過去データから推計) / mask=学習から除外する期間
+# start/end: CPIに反映される月（電気・ガスは検針月＝使用月の翌月）。announced: 公表・決定日（バックテストではこの日以降だけ使う）
+subsidy_elec,electricity,2023-02,2023-09,7.0,2022-10-28,全国,base,電気・ガス価格激変緩和対策（2023年1-8月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_elec,electricity,2023-10,2024-05,3.5,2023-08-29,全国,base,激変緩和 縮小（2023年9月-2024年4月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_elec,electricity,2024-06,2024-06,1.8,2024-02-16,全国,base,激変緩和 最終月（2024年5月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_elec,electricity,2024-09,2024-10,4.0,2024-06-21,全国,base,酷暑乗り切り緊急支援（2024年8-9月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_elec,electricity,2024-11,2024-11,2.5,2024-06-21,全国,base,酷暑乗り切り緊急支援（2024年10月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_elec,electricity,2025-02,2025-03,2.5,2024-11-22,全国,base,電気・ガス料金支援（2025年1-2月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_elec,electricity,2025-04,2025-04,1.3,2024-11-22,全国,base,電気・ガス料金支援（2025年3月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_elec,electricity,2025-08,2025-08,2.0,2025-05-27,全国,base,電気・ガス料金支援（2025年7月使用分）,https://www.meti.go.jp/main/yosan/yosan_fy2025/pdf/denki_gas_yobi.pdf
+subsidy_elec,electricity,2025-09,2025-09,2.4,2025-05-27,全国,base,電気・ガス料金支援（2025年8月使用分）,https://www.meti.go.jp/main/yosan/yosan_fy2025/pdf/denki_gas_yobi.pdf
+subsidy_elec,electricity,2025-10,2025-10,2.0,2025-05-27,全国,base,電気・ガス料金支援（2025年9月使用分）,https://www.meti.go.jp/main/yosan/yosan_fy2025/pdf/denki_gas_yobi.pdf
+subsidy_elec,electricity,2026-02,2026-03,4.5,2025-11-21,全国,base,電気・ガス料金支援（2026年1-2月使用分）,https://www.tepco.co.jp/ep/notice/pressrelease/2025/pdf/25x2801.pdf
+subsidy_elec,electricity,2026-04,2026-04,1.5,2025-11-21,全国,base,電気・ガス料金支援（2026年3月使用分）,https://www.tepco.co.jp/ep/notice/pressrelease/2025/pdf/25x2801.pdf
+subsidy_elec,electricity,2026-08,2026-08,3.5,2026-06-12,全国,base,電気・ガス料金支援（2026年7月使用分）,https://www4.tepco.co.jp/ep/notice/pressrelease/2026/pdf/26x1601.pdf
+subsidy_elec,electricity,2026-09,2026-09,4.5,2026-06-12,全国,base,電気・ガス料金支援（2026年8月使用分）,https://www4.tepco.co.jp/ep/notice/pressrelease/2026/pdf/26x1601.pdf
+subsidy_elec,electricity,2026-10,2026-10,3.5,2026-06-12,全国,base,電気・ガス料金支援（2026年9月使用分）,https://www4.tepco.co.jp/ep/notice/pressrelease/2026/pdf/26x1601.pdf
+subsidy_gas,city_gas,2023-02,2023-09,30.0,2022-10-28,全国,base,激変緩和（2023年1-8月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_gas,city_gas,2023-10,2024-05,15.0,2023-08-29,全国,base,激変緩和 縮小,https://denkigas-gekihenkanwa.go.jp/
+subsidy_gas,city_gas,2024-06,2024-06,7.5,2024-02-16,全国,base,激変緩和 最終月,https://denkigas-gekihenkanwa.go.jp/
+subsidy_gas,city_gas,2024-09,2024-10,17.5,2024-06-21,全国,base,酷暑乗り切り緊急支援（8-9月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_gas,city_gas,2024-11,2024-11,10.0,2024-06-21,全国,base,酷暑乗り切り緊急支援（10月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_gas,city_gas,2025-02,2025-03,10.0,2024-11-22,全国,base,電気・ガス料金支援（2025年1-2月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_gas,city_gas,2025-04,2025-04,5.0,2024-11-22,全国,base,電気・ガス料金支援（2025年3月使用分）,https://denkigas-gekihenkanwa.go.jp/
+subsidy_gas,city_gas,2025-08,2025-08,8.0,2025-05-27,全国,base,電気・ガス料金支援（2025年7月使用分）,https://www.meti.go.jp/main/yosan/yosan_fy2025/pdf/denki_gas_yobi.pdf
+subsidy_gas,city_gas,2025-09,2025-09,10.0,2025-05-27,全国,base,電気・ガス料金支援（2025年8月使用分）,https://www.meti.go.jp/main/yosan/yosan_fy2025/pdf/denki_gas_yobi.pdf
+subsidy_gas,city_gas,2025-10,2025-10,8.0,2025-05-27,全国,base,電気・ガス料金支援（2025年9月使用分）,https://www.meti.go.jp/main/yosan/yosan_fy2025/pdf/denki_gas_yobi.pdf
+subsidy_gas,city_gas,2026-02,2026-03,18.0,2025-11-21,全国,base,電気・ガス料金支援（2026年1-2月使用分）,https://www.tepco.co.jp/ep/notice/pressrelease/2025/pdf/25x2802.pdf
+subsidy_gas,city_gas,2026-04,2026-04,6.0,2025-11-21,全国,base,電気・ガス料金支援（2026年3月使用分）,https://www.tepco.co.jp/ep/notice/pressrelease/2025/pdf/25x2802.pdf
+subsidy_gas,city_gas,2026-08,2026-08,14.0,2026-06-12,全国,base,電気・ガス料金支援（2026年7月使用分）,https://www4.tepco.co.jp/ep/notice/pressrelease/2026/pdf/26x1601.pdf
+subsidy_gas,city_gas,2026-09,2026-09,18.0,2026-06-12,全国,base,電気・ガス料金支援（2026年8月使用分）,https://www4.tepco.co.jp/ep/notice/pressrelease/2026/pdf/26x1601.pdf
+subsidy_gas,city_gas,2026-10,2026-10,14.0,2026-06-12,全国,base,電気・ガス料金支援（2026年9月使用分）,https://www4.tepco.co.jp/ep/notice/pressrelease/2026/pdf/26x1601.pdf
+levy,electricity,2014-05,2015-04,0.75,2014-03-24,全国,base,再エネ賦課金 2014年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2015-05,2016-04,1.58,2015-03-19,全国,base,再エネ賦課金 2015年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2016-05,2017-04,2.25,2016-03-18,全国,base,再エネ賦課金 2016年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2017-05,2018-04,2.64,2017-03-14,全国,base,再エネ賦課金 2017年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2018-05,2019-04,2.90,2018-03-23,全国,base,再エネ賦課金 2018年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2019-05,2020-04,2.95,2019-03-22,全国,base,再エネ賦課金 2019年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2020-05,2021-04,2.98,2020-03-23,全国,base,再エネ賦課金 2020年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2021-05,2022-04,3.36,2021-03-24,全国,base,再エネ賦課金 2021年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2022-05,2023-04,3.45,2022-03-25,全国,base,再エネ賦課金 2022年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2023-05,2024-04,1.40,2023-03-24,全国,base,再エネ賦課金 2023年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2024-05,2025-04,3.49,2024-03-19,全国,base,再エネ賦課金 2024年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2025-05,2026-04,3.98,2025-03-21,全国,base,再エネ賦課金 2025年度,https://www.enecho.meti.go.jp/category/saving_and_new/saiene/kaitori/fit_kakaku.html
+levy,electricity,2026-05,2027-04,4.18,2026-03-19,全国,base,再エネ賦課金 2026年度,https://selectra.jp/energy/news/renewable-energy-surcharge-2026-update
+cap,gasoline,2026-03,,170,2026-03-13,全国,base,ガソリン170円程度に抑制する緊急補助（2026年3月19日開始、8月25日に目安維持を表明）,https://kuruma-news.jp/post/1031580
+event,electricity,2016-04,2016-04,,2015-12-01,全国,base,電力小売全面自由化,
+event,electricity,2023-06,2023-06,,2023-05-16,全国,base,大手電力7社の規制料金値上げ,
+event,,2014-04,2014-04,,2013-10-01,全国,base,消費税率引き上げ（5%→8%）,
+event,,2019-10,2019-10,,2018-10-15,全国,base,消費税率引き上げ（8%→10%、軽減税率）・幼児教育無償化,
+event,svc_other,2020-04,2020-04,,2019-05-10,全国,base,高等教育無償化・私立高校授業料の実質無償化,
+event,svc_other,2025-04,2025-04,,2025-02-25,全国,base,高校授業料 所得制限撤廃,
+event,svc_other,2026-04,2026-04,,2025-10-31,全国,base,私立高校授業料支援の拡充,
+event,alcohol,2020-10,2020-10,,2017-12-22,全国,base,酒税改正（第1段階）,
+event,alcohol,2023-10,2023-10,,2017-12-22,全国,base,酒税改正（第2段階）,
+event,alcohol,2026-10,2026-10,0.0,2017-12-22,全国,base,酒税改正（第3段階・ビール系一本化）。純影響は小さいと仮定,
+event,rice,2025-06,2025-07,,2025-05-26,全国,base,政府備蓄米の随意契約による放出,
+mask,lodging,2020-04,2023-12,,,全国,base,GoToトラベル・全国旅行支援・コロナ期,
+mask,package_tour,2020-03,2023-06,,,全国,base,海外旅行停止期の補完値,
+mask,,2020-03,2021-12,,,全国,base,コロナ期（全品目の学習から除外）,
