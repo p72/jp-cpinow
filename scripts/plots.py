@@ -57,7 +57,7 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
     fig = plt.figure(figsize=(16, 9), dpi=120)
     fig.patch.set_facecolor("white")
     gs = fig.add_gridspec(3, 2, height_ratios=[0.25, 0.40, 0.35], width_ratios=[1.0, 1.0],
-                          left=0.06, right=0.98, top=0.955, bottom=0.075, hspace=0.45, wspace=0.13)
+                          left=0.06, right=0.98, top=0.955, bottom=0.075, hspace=0.62, wspace=0.13)
 
     # ------------------------------------------------------------------ header
     ax = fig.add_subplot(gs[0, :]); ax.axis("off"); ax.set_xlim(0, 1); ax.set_ylim(0, 1)
@@ -66,20 +66,20 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
     m1 = months[0]
     core = fc.targets.loc[m1, "core"]
     lo, hi = bands.interval("core", 1, point, core)
-    ax.text(0, 0.62, f"{m1.year}年{m1.month}月分 コア（生鮮食品を除く総合）", fontsize=11, color=INK2, va="bottom")
-    ax.text(0, 0.02, f"{core + 0.0:+.1f}%", fontsize=40, color=BLUE, va="bottom", weight="bold")
+    ax.text(0, 0.56, f"{m1.year}年{m1.month}月分 コア（生鮮食品を除く総合）", fontsize=11, color=INK2, va="bottom")
+    ax.text(0, -0.04, f"{core + 0.0:+.1f}%", fontsize=40, color=BLUE, va="bottom", weight="bold")
     if lo == lo:
-        ax.text(0.135, 0.08, f"90%区間\n{lo:+.1f} 〜 {hi:+.1f}", fontsize=9.5, color=MUTED,
+        ax.text(0.135, 0.02, f"90%区間\n{lo:+.1f} 〜 {hi:+.1f}", fontsize=9.5, color=MUTED,
                 va="bottom", linespacing=1.3)
     # 5 × 3 table
     x0, cw = 0.25, 0.115
-    ax.text(x0, 0.80, "系列", fontsize=10, color=INK2, weight="bold", va="center")
+    ax.text(x0, 0.68, "系列", fontsize=10, color=INK2, weight="bold", va="center")
     for j, m in enumerate(months):
-        ax.text(x0 + 0.13 + (j + 1) * cw, 0.80, f"{m.year % 100}年{m.month}月（h={j + 1}）", fontsize=10,
+        ax.text(x0 + 0.13 + (j + 1) * cw, 0.68, f"{m.year % 100}年{m.month}月（h={j + 1}）", fontsize=10,
                 color=INK2, weight="bold", ha="right", va="center")
-    ax.plot([x0, x0 + 0.13 + 3 * cw], [0.73, 0.73], color=INK2, lw=0.8)
+    ax.plot([x0, x0 + 0.13 + 3 * cw], [0.62, 0.62], color=INK2, lw=0.8)
     for i, (k, code, _) in enumerate(config.TARGETS):
-        y = 0.62 - i * 0.135
+        y = 0.53 - i * 0.125
         ax.text(x0, y, config.SHORT[k], fontsize=11, color=INK, va="center",
                 weight="bold" if k == "core" else "normal")
         for j, m in enumerate(months):
@@ -90,10 +90,10 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
                     weight="bold")
             if l == l:
                 ax.text(xr, y, f"[{l:+.1f}, {h_:+.1f}]", fontsize=8.5, color=MUTED, ha="right", va="center")
-    sub = [f"データ時点 {asof:%Y-%m-%d}　最新の公表月 {fc.T.year}年{fc.T.month}月（全国）　モデル {model_name}",
-           "［ ］は90%区間（擬似リアルタイム・バックテストの誤差分位点。政策の不確実性は含まない）"]
-    ax.text(x0 + 0.13 + 3 * cw + 0.03, 0.02, "\n".join(sub), fontsize=9, color=INK2, va="bottom",
-            linespacing=1.6)
+    sub = [f"データ時点 {asof:%Y-%m-%d}", f"最新の公表月 {fc.T.year}年{fc.T.month}月（全国）",
+           f"モデル {model_name}", "［ ］は90%区間（擬似リアルタイム検証の", "誤差分位点。政策の不確実性は含まない）"]
+    ax.text(1.0, 0.0, "\n".join(sub), fontsize=9, color=INK2, va="bottom", ha="right",
+            linespacing=1.5)
     if news is not None and len(news) > 1:
         col = f"{m1:%Y-%m}"
         if col in news:
@@ -134,7 +134,8 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
     ax.set_title("総合の前年比と寄与度（%pt）", fontsize=12, color=INK, loc="left")
     ax.grid(axis="y", color=GRID); ax.set_axisbelow(True)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(frameon=False, fontsize=8, ncol=2, loc="upper left", bbox_to_anchor=(0, -0.1))
+    ax.legend(frameon=False, fontsize=8.5, ncol=4, loc="upper left", bbox_to_anchor=(0, -0.09),
+              columnspacing=1.2, handlelength=1.4)
 
     # ------------------------------------------------------------- evolution
     ax = fig.add_subplot(gs[2, 0])
@@ -143,7 +144,7 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
     if runs is not None and not runs.empty:
         r = runs[runs["month"] == str(m1.date())].copy()
         r["d"] = pd.to_datetime(r["run_at"]).dt.normalize()
-        for k, color in [("core", BLUE), ("headline", INK2), ("corecore", SLOTS[2])]:
+        for k, color in [("headline", INK2), ("corecore", SLOTS[2]), ("core", BLUE)]:
             s = r[r["target"] == k].groupby("d")["yoy"].last()
             if len(s):
                 ax.plot(s.index, s.values, color=color, lw=2, marker="o", ms=7, label=config.SHORT[k])
@@ -152,9 +153,17 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
                 drawn = True
     if drawn:
         nat_rel = m1 + pd.offsets.MonthBegin(1) + pd.Timedelta(days=release.NAT_DAY - 1)
+        start = m1 - pd.offsets.MonthBegin(1) + pd.offsets.MonthBegin(1) + pd.Timedelta(days=release.NAT_DAY - 2)
+        ax.set_xlim(min(start, asof - pd.Timedelta(days=2)), nat_rel + pd.Timedelta(days=3))
+        lo_y, hi_y = ax.get_ylim()
+        mid = (lo_y + hi_y) / 2
+        half = max((hi_y - lo_y) / 2 + 0.1, 0.5)
+        ax.set_ylim(mid - half, mid + half)
         ax.axvline(nat_rel, color=MUTED, lw=0.8, ls=":")
-        ax.text(nat_rel, ax.get_ylim()[0], " 全国CPI公表", fontsize=8.5, color=MUTED, va="bottom")
+        ax.text(nat_rel, mid - half, " 全国CPI公表", fontsize=8.5, color=MUTED, va="bottom", ha="right")
+        ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.FR))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%-m/%-d"))
+        ax.set_ylabel("前年比（%）", fontsize=9)
         ax.legend(frameon=False, fontsize=8.5, loc="upper left", ncol=3)
     else:
         ax.text(0.5, 0.5, "記録はまだありません（自動実行のたびに追加されます）", ha="center", va="center",
@@ -180,22 +189,34 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
     pol = policy.load(asof)
     lo_m, hi_m = months[0], months[-1]
     shown = 0
+    seen = set()
     for _, r in pol.iterrows():
         if r["kind"] in ("mask",) or pd.isna(r["start"]):
             continue
         end = r["end"] if pd.notna(r["end"]) else hi_m
-        if r["start"] > hi_m or end < lo_m - pd.offsets.MonthBegin(1):
+        if r["kind"].startswith("subsidy") and end + pd.offsets.MonthBegin(1) >= lo_m and end < hi_m:
+            nxt = end + pd.offsets.MonthBegin(1)
+            later = pol[(pol["kind"] == r["kind"]) & (pol["start"] == nxt)]
+            key = (f"{nxt:%Y-%m}", "end")
+            if later.empty and key not in seen:
+                seen.add(key)
+                ax.text(0, y, f"・{nxt:%Y-%m}　電気・ガス料金支援の終了（値引きなし）", fontsize=9, color=INK2, va="top")
+                y -= 0.03
+                shown += 1
+        if r["start"] > hi_m or end < lo_m:
             continue
         if r["kind"] == "levy" and r["start"] < lo_m:
             continue
         rng = f"{r['start']:%Y-%m}" + (f"〜{r['end']:%Y-%m}" if pd.notna(r["end"]) and r["end"] != r["start"] else "")
         txt = r["note"][:38]
+        if (rng, txt) in seen:
+            continue
+        seen.add((rng, txt))
         ax.text(0, y, f"・{rng}　{txt}", fontsize=9, color=INK2, va="top")
         y -= 0.03
         shown += 1
         if shown >= 6:
             break
-    nxt = [m for m in months]
     if shown == 0:
         ax.text(0, y, "（なし）", fontsize=9, color=MUTED, va="top"); y -= 0.03
     # upcoming releases

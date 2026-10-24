@@ -10,7 +10,7 @@ from . import config, cpi, e1, energy, fresh, policy, tokyo
 from .data import Dataset
 
 H = 3
-ENSEMBLE: dict = {}      # {block: weight on E2}; set from the backtest (see SKILL.md)
+ENSEMBLE: dict = {"B1": 0.25, "B2": 0.25, "B6": 0.25, "B9": 0.25}  # weight on E2 by block (SKILL.md)
 
 
 @dataclass
@@ -38,9 +38,12 @@ class Forecast:
 
 
 def run(ds: Dataset, scenario: str = "base", use_tokyo: bool = True, use_veg: bool = True,
-        modules: dict | None = None, e2w=None) -> Forecast:
+        modules: dict | None = None, e2w=None, rollforward: bool = False) -> Forecast:
     """modules: optional overrides {leaf_key: callable} (used by ablations).
-    e2w: weight on E2 (LightGBM) deviations — float, {block: w}, or None (= ENSEMBLE)."""
+    e2w: weight on E2 (LightGBM) deviations — float, {block: w}, or None (= ENSEMBLE).
+    rollforward: when T+1 was bridged (Tokyo / weekly vegetables), re-forecast T+2..T+3
+    of E1 leaves from the bridged T+1 (its deviation then feeds the later months).
+    Off by default: it made h=2/3 worse in both backtest periods (SKILL.md)."""
     T = ds.T
     asof = ds.asof or pd.Timestamp.today().normalize()
     months = pd.date_range(T + pd.offsets.MonthBegin(1), periods=H, freq="MS")
@@ -69,6 +72,7 @@ def run(ds: Dataset, scenario: str = "base", use_tokyo: bool = True, use_veg: bo
             lv, inf = energy.propane(s, ds.boj, months)
         else:
             lv, inf = e1.forecast_leaf(leaf, s, ds.boj, months, asof)
+            inf["e1_path"] = True
             w2 = wmap.get(leaf.block, 0.0)
             if d2 is not None and leaf.key in d2 and w2 > 0:
                 g = pd.Series({m: inf["S"][m] + (1 - w2) * inf["dev"][m] + w2 * d2[leaf.key][m]
@@ -79,6 +83,11 @@ def run(ds: Dataset, scenario: str = "base", use_tokyo: bool = True, use_veg: bo
             g = np.log(pd.concat([s.iloc[[-1]], lv])).diff().iloc[1:]
             rm = inf.get("rmse", {}).get(1)
             g2, vinf = fresh.blend(s, ds.veg, g, rm)
+            # Tokyo's figure, once out, beats the weekly survey: use the survey only before it
+            if Lt is not None and leaf.key in Lt:
+                tk = set(Lt[leaf.key].dropna().index)
+                g2 = g2.where(~g2.index.isin(tk), g)
+                vinf = {m: v for m, v in vinf.items() if m not in tk}
             if vinf:
                 lv = s.iloc[-1] * np.exp(g2.cumsum())
                 info["veg"] = vinf
@@ -97,6 +106,12 @@ def run(ds: Dataset, scenario: str = "base", use_tokyo: bool = True, use_veg: bo
                     changed = True
             if changed:
                 lv = s.iloc[-1] * np.exp(g.cumsum())
+        m1 = months[0]
+        bridged = (leaf.key, m1) in info["tokyo"] or (leaf.key == "fresh_veg" and m1 in info.get("veg", {}))
+        if rollforward and bridged and inf.get("e1_path") and e1.opts(leaf.key)["dev"]:
+            s_ext = pd.concat([s, lv.loc[[m1]]])
+            lv2, _ = e1.forecast_leaf(leaf, s_ext, ds.boj, months[1:], asof, horizons=(1, 2))
+            lv = pd.concat([lv.loc[[m1]], lv2])
         fut[leaf.key] = lv
         info["leaf"][leaf.key] = inf
     LL = pd.concat([Ln.loc[:T], pd.DataFrame(fut)])

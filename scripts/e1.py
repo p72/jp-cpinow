@@ -20,6 +20,28 @@ UPSTREAM = {
 }
 RIDGE = 2.0
 TRAIN_START = "2005-01-01"
+# per-leaf options chosen by the leaf-level backtest (SKILL.md): dev = use the deviation
+# regression; covid = drop the COVID window (policy.csv mask rows with empty leaf) from S
+OPTS: dict = {  # leaf-level backtest, h=1..3, both 2015–19 and 2022–26 (2026-10-24)
+    "alcohol": dict(dev=False, covid=False),
+    "dining": dict(covid=False),
+    "food_other": dict(covid=False),
+    "fresh_fish": dict(dev=False, covid=False),
+    "fresh_fruit": dict(dev=False),
+    "goods_other": dict(covid=False),
+    "handset": dict(dev=False, covid=False),
+    "mobile_fee": dict(dev=False, covid=False),
+    "package_tour": dict(dev=False, covid=False),
+    "public_svc": dict(covid=False),
+    "rent_imputed": dict(dev=False, covid=False),
+    "svc_other": dict(covid=False),
+    "water": dict(covid=False),
+}
+DEFAULT = dict(dev=True, covid=True, years=5)
+
+
+def opts(key: str) -> dict:
+    return {**DEFAULT, **OPTS.get(key, {})}
 
 
 def seasonal(y: pd.Series, mask: pd.Series, years: int = 5) -> pd.Series:
@@ -59,8 +81,14 @@ def forecast_leaf(leaf: config.Leaf, L: pd.Series, boj: pd.DataFrame, months, as
     T = L.dropna().index[-1]
     idx = pd.date_range(L.index[0], months[-1], freq="MS")
     y = np.log(L).diff().reindex(idx)
-    mask = policy.masked(leaf.key, idx)
-    S = seasonal(y, mask)
+    o = opts(leaf.key)
+    if o["covid"] == "both":
+        m1, m0 = policy.masked(leaf.key, idx, covid=True), policy.masked(leaf.key, idx, covid=False)
+        S = 0.5 * (seasonal(y, m1, o["years"]) + seasonal(y, m0, o["years"]))
+        mask = m1
+    else:
+        mask = policy.masked(leaf.key, idx, covid=o["covid"])
+        S = seasonal(y, mask, o["years"])
     dev = (y - S).where(~mask)
     out, info = {}, {"S": {}, "dev": {}}
     ups = UPSTREAM.get(leaf.kind)
@@ -75,7 +103,7 @@ def forecast_leaf(leaf: config.Leaf, L: pd.Series, boj: pd.DataFrame, months, as
         if np.isnan(S_m):
             S_m = 0.0
         d_hat = 0.0
-        if not leaf.policy_only:
+        if not leaf.policy_only and o["dev"]:
             o_all = dev.index[(dev.index >= TRAIN_START) & (dev.index <= T - pd.offsets.MonthBegin(h))]
             F = _features(dev.ffill(limit=2), up, o_all)
             tgt = dev.shift(-h).reindex(o_all)

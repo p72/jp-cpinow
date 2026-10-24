@@ -64,10 +64,12 @@ def event_months(leaf: str, asof=None) -> set:
     return out
 
 
-def masked(leaf: str, index: pd.DatetimeIndex) -> pd.Series:
-    """True where the leaf's history should not be used for training."""
+def masked(leaf: str, index: pd.DatetimeIndex, covid: bool = True) -> pd.Series:
+    """True where the leaf's history should not be used for training.
+    covid=False ignores the `mask` rows (COVID / travel-subsidy windows) and keeps
+    only the policy-event months masked."""
     df = _raw()
-    df = df[(df["kind"] == "mask") & ((df["leaf"] == leaf) | (df["leaf"] == ""))]
+    df = df[(df["kind"] == "mask") & ((df["leaf"] == leaf) | (df["leaf"] == "")) & covid]
     m = pd.Series(False, index=index)
     for _, r in df.iterrows():
         m |= m.index.isin(_months(r))
