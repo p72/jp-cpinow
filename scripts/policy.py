@@ -47,7 +47,49 @@ def monthly_value(kind: str, index: pd.DatetimeIndex, asof=None, scenario="base"
     for _, r in df.iterrows():
         m = _months(r)
         s.loc[s.index.isin(m)] = r["value"]
+    if kind == "levy" and not df.empty:   # next fiscal year not announced yet: hold the last rate
+        last = df.loc[df["end"].idxmax()]
+        s.loc[s.index > last["end"]] = last["value"]
     return s
+
+
+def assumptions(months, asof=None) -> list[str]:
+    """Plain-language policy assumptions behind a forecast for `months` (CPI months).
+    Shown on the report and in README so that a missing policy update is visible."""
+    months = pd.DatetimeIndex(months)
+    lo, hi = months[0], months[-1]
+    df = load(asof)
+    out = []
+    for kind, name in [("subsidy_elec", "電気・ガス料金支援")]:
+        rows = df[df["kind"] == kind]
+        if rows.empty:
+            continue
+        last_end = rows["end"].max()
+        active = [m for m in months if monthly_value(kind, months, asof).get(m, 0) > 0]
+        if last_end >= hi:
+            out.append(f"{name}：予測期間中は発表済みの値引き単価を反映")
+        elif last_end >= lo - pd.offsets.MonthBegin(1):
+            stop = last_end + pd.offsets.MonthBegin(1)
+            span = f"{lo:%-m}月分" if last_end == lo else f"{lo:%-m}〜{last_end:%-m}月分"
+            had = f"{span}は反映、" if active else ""
+            out.append(f"{name}：{had}{stop:%Y年%-m月}分（{(stop - pd.offsets.MonthBegin(1)):%-m}月使用分）以降は"
+                       "未発表のため値引きなしで予測（延長されれば電気・ガス代は下振れ）")
+        else:
+            out.append(f"{name}：予測期間中の支援は未発表（値引きなしで予測）")
+    caps = df[df["kind"] == "cap"]
+    for _, r in caps.iterrows():
+        if pd.notna(r["end"]) and r["end"] < lo:
+            continue
+        if pd.isna(r["end"]) or r["end"] >= hi:
+            out.append(f"ガソリン：{r['value']:.0f}円程度の上限目安が予測期間中も続くと仮定（終了時期は未定）")
+        else:
+            out.append(f"ガソリン：上限目安は{r['end']:%Y年%-m月}まで、その後は市場価格で予測")
+    yrs = sorted({m.year for m in months if m.month == 5})
+    for y in yrs:
+        lev = df[(df["kind"] == "levy") & (df["start"] == pd.Timestamp(y, 5, 1))]
+        if lev.empty:
+            out.append(f"再エネ賦課金：{y}年度の単価が未発表（前年度据え置きで予測）")
+    return out
 
 
 def events(leaf: str, asof=None, scenario="base") -> pd.DataFrame:

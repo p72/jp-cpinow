@@ -197,8 +197,14 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
             y -= 0.028
     # policy calendar for the horizon
     y -= 0.02
-    ax.text(0, y, "予測期間中の制度要因（policy.csv）", fontsize=12, color=INK, weight="bold", va="top")
+    ax.text(0, y, "予測の前提（政策）と制度要因（policy.csv）", fontsize=12, color=INK, weight="bold", va="top")
     y -= 0.04
+    import textwrap
+    for a_ in policy.assumptions(months, asof):
+        for k_, ln in enumerate(textwrap.wrap(a_, 46)):
+            ax.text(0, y, ("▶ " if k_ == 0 else "　 ") + ln, fontsize=9, color=INK,
+                    va="top")
+            y -= 0.027
     pol = policy.load(asof)
     lo_m, hi_m = months[0], months[-1]
     shown = 0
@@ -228,7 +234,7 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
         ax.text(0, y, f"・{rng}　{txt}", fontsize=9, color=INK2, va="top")
         y -= 0.03
         shown += 1
-        if shown >= 6:
+        if shown >= 4:
             break
     if shown == 0:
         ax.text(0, y, "（なし）", fontsize=9, color=MUTED, va="top"); y -= 0.03

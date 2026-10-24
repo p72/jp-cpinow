@@ -18,7 +18,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from . import backtest, bands, config, cpi, data, forecast, news, plots, vintage
+from . import backtest, bands, config, cpi, data, forecast, news, plots, policy, vintage
 
 MODEL = "v1"
 
@@ -107,7 +107,9 @@ def readme_table(fc, point: str, asof) -> str:
         lines.append("| " + " | ".join(cells) + " |")
     note = (f"データ時点 {pd.Timestamp(asof):%Y-%m-%d}（最新の公表月 {fc.T.year}年{fc.T.month}月）。"
             "実績は総務省の公表値、［ ］は90%区間（政策の不確実性は含まない）。自動実行のたびに更新。")
-    return "\n".join([MARK_START, "", *lines, "", note, "", MARK_END])
+    pre = ["**予測の前提（政策）**　※発表があれば `scripts/policy.csv` に追記して更新"]
+    pre += [f"- {x}" for x in policy.assumptions(fc.targets.index, asof)]
+    return "\n".join([MARK_START, "", *lines, "", note, "", *pre, "", MARK_END])
 
 
 def update_readme(fc, point: str, asof, path: str = README) -> bool:
