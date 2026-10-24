@@ -86,6 +86,44 @@ def _result_table(fc, point: str, n_hist: int = 3, text: bool = True) -> pd.Data
     return df
 
 
+README = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "README.md")
+MARK_START, MARK_END = "<!-- forecast:start -->", "<!-- forecast:end -->"
+
+
+def readme_table(fc, point: str, asof) -> str:
+    """Markdown block for README: rows = 5 series, columns = 3 published months + h=1..3."""
+    act = fc.recent(3)
+    head = ["前年同月比（%）"] + [f"{m.year}年{m.month}月<br>実績" for m in act.index] \
+        + [f"**{m.year}年{m.month}月**<br>予測 h={h}" for h, m in enumerate(fc.targets.index, start=1)]
+    lines = ["| " + " | ".join(head) + " |", "|" + "---|" + "---:|" * (len(head) - 1)]
+    for k, _, label in config.TARGETS:
+        cells = [config.SHORT[k] if k != "core" else f"**{config.SHORT[k]}**"]
+        cells += [f"{act.loc[m, k]:+.1f}" for m in act.index]
+        for h, m in enumerate(fc.targets.index, start=1):
+            v = fc.targets.loc[m, k]
+            lo, hi = bands.interval(k, h, point, v)
+            band = f" <sub>[{lo:+.1f}, {hi:+.1f}]</sub>" if lo == lo else ""
+            cells.append(f"**{v:+.1f}**{band}")
+        lines.append("| " + " | ".join(cells) + " |")
+    note = (f"データ時点 {pd.Timestamp(asof):%Y-%m-%d}（最新の公表月 {fc.T.year}年{fc.T.month}月）。"
+            "実績は総務省の公表値、［ ］は90%区間（政策の不確実性は含まない）。自動実行のたびに更新。")
+    return "\n".join([MARK_START, "", *lines, "", note, "", MARK_END])
+
+
+def update_readme(fc, point: str, asof, path: str = README) -> bool:
+    if not os.path.exists(path):
+        return False
+    text = open(path, encoding="utf-8").read()
+    if MARK_START not in text or MARK_END not in text:
+        return False
+    i, j = text.index(MARK_START), text.index(MARK_END) + len(MARK_END)
+    new = text[:i] + readme_table(fc, point, asof) + text[j:]
+    if new != text:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new)
+    return True
+
+
 def cmd_forecast(a):
     if a.asof:
         ds = _load_vintage(a.asof)
@@ -122,6 +160,8 @@ def cmd_forecast(a):
         os.makedirs(a.out, exist_ok=True)
         stamp = f"{pd.Timestamp(ds.asof):%Y%m%d}"
         _result_table(fc, point, text=False).to_csv(os.path.join(a.out, "forecast.csv"), encoding="utf-8-sig")
+        if update_readme(fc, point, ds.asof):
+            print("[readme] 予測の表を更新")
         fc.contributions("headline").round(3).to_csv(os.path.join(a.out, "forecast_contributions.csv"),
                                                     encoding="utf-8-sig")
         if nw is not None:
