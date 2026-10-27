@@ -76,6 +76,7 @@ fc.contributions("headline")
 - **再構成**：直近6か月分の公表日（release.origins の a・c・b）にデータを切り戻してモデルを再実行した参考値。後からの改定が混じるので「当時の実際の予測」ではない。`data/recon.csv` にキャッシュし、新しい日付だけ計算する（モデルを変えたら `MODEL` を上げるか recon.csv を消して作り直す）。
 - 出力：`output/history.png`（系列ごとに対象月別の推移、★＝公表値）、`output/history.csv`、README のコアの推移表、レポートの左下パネル。
 - 予測が変わった理由は、レポート右側の「前回からの改定」（news.py の逐次分解）で見る。
+- **data/HISTORY.md**（自動生成）：自動実行のたびに、前回の記録からのニュース分解（コア, %pt）を vintages.sqlite の news 表に保存し（`vintage.log_news`）、前回から入ったデータ（`vintage.arrivals`）と合わせて対象月ごとの表を作り直す（`history.build_md`）。抜けた分の分解は `python -m scripts.cli history --md` で計算し直せる。記録時刻はすべて日本時間。
 
 ## 検証（擬似リアルタイム）
 - 各 T について3時点：**a**＝全国CPI(T)公表直後（T+1月21日）、**c**＝区部(T+1)公表後（T+1月28日）、**b**＝日銀 企業物価(T+1)公表後（T+2月12日）。

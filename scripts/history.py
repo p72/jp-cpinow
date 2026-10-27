@@ -111,3 +111,123 @@ def table(rec: pd.DataFrame, recon: pd.DataFrame, actual: pd.DataFrame | None, t
 
 def short(key: str) -> str:
     return config.SHORT[key]
+
+
+# ---------------------------------------------------------------- data/HISTORY.md
+GROUP_LABELS = [  # (series prefix, label, weekly?)
+    ("nat:", "全国CPI", False), ("tky:", "東京都区部CPI", False),
+    ("boj:imp_", "輸入物価（日銀）", False), ("boj:cgpi_", "国内企業物価（日銀）", False),
+    ("boj:usdjpy", "ドル円", False),
+    ("wk:", "ガソリン・灯油（週次）", True), ("veg:", "野菜小売価格（週次）", True),
+]
+
+
+def describe_arrivals(arr: pd.DataFrame, keep_revisions: int = 6) -> str:
+    """Compact Japanese description, e.g. '全国CPI 9月分、ガソリン・灯油（週次） 10/20調査'."""
+    if arr is None or arr.empty:
+        return "なし"
+    groups: dict = {}
+    for _, r in arr.iterrows():
+        s = r["series"]
+        if s.startswith("yoy:"):          # published y/y arrives with the national CPI
+            continue
+        hit = next(((lab, wk) for p, lab, wk in GROUP_LABELS if s.startswith(p)), (s, False))
+        g = groups.setdefault(hit[0], {"weekly": hit[1], "new": set(), "rev": set()})
+        g["new"].update(r["new"])
+        g["rev"].update(r["revised"])
+    parts, n_old = [], 0
+    for lab, g in groups.items():
+        new, rev = sorted(g["new"]), sorted(g["rev"] - g["new"])
+        latest = max(new + rev) if (new or rev) else None
+        recent = [d for d in rev if latest and pd.Timestamp(d) > pd.Timestamp(latest) - pd.DateOffset(months=keep_revisions)]
+        n_old += len(rev) - len(recent)
+        fmt = (lambda d: f"{pd.Timestamp(d):%-m/%-d}調査") if g["weekly"] else (lambda d: f"{pd.Timestamp(d).month}月")
+        bits = []
+        if new:
+            bits.append("・".join(fmt(d) for d in new[-3:]) + ("" if g["weekly"] else "分"))
+        if recent and not g["weekly"]:
+            bits.append("・".join(fmt(d) for d in recent[-3:]) + "改定")
+        if bits:
+            parts.append(f"{lab} " + "／".join(bits))
+    if n_old:
+        parts.append(f"（ほか過去分の改定 {n_old}件）")
+    return "、".join(parts) if parts else "なし"
+
+
+def build_md(model: str, out_dir: str | None = None) -> str:
+    """Write data/HISTORY.md (+ news_log.csv) from the vintage store; returns the md path."""
+    out_dir = out_dir or vintage.home()
+    con = vintage.connect()
+    runs = vintage.runs(con=con)
+    runs = runs[runs["model"].str.split("-").str[0] == model].copy()
+    news = vintage.news_log(con=con)
+    news.to_csv(os.path.join(out_dir, "news_log.csv"), index=False, encoding="utf-8-sig")
+    keys = [k for k, _, _ in config.TARGETS]
+    lines = ["# 予測の変化の記録（自動生成）", "",
+             f"モデル {model} の記録（リアルタイム）。対象月ごと、新しい順。値は全国CPIの前年同月比（%）。",
+             "「変化」はコアの前回の記録からの変化。「主な要因」はコアの予測の改定をデータの種類ごとに分けたもの（%pt）。",
+             "「入ったデータ」は前回の記録から今回までにデータベースに入った新しい月・改定。",
+             "記録の日時は自動実行の時刻で、GitHub の混雑により統計の公表日より遅れることがある。", ""]
+    run_keys = sorted(runs["run_at"].unique())
+    prev_of = {rk: (run_keys[i - 1] if i else None) for i, rk in enumerate(run_keys)}
+    arr_cache: dict = {}
+    for month in sorted(runs["month"].unique(), reverse=True):
+        g = runs[runs["month"] == month]
+        m = pd.Timestamp(month)
+        lines += [f"## {m.year}年{m.month}月分", "",
+                  "| 記録日時 | 総合 | **コア** | 変化 | コアコア | 欧米型コア | サービス | 主な要因（コアへの寄与） | 入ったデータ |",
+                  "|---|---:|---:|---:|---:|---:|---:|---|---|"]
+        rows, prev_core = [], None
+        for rk, gr in g.groupby("run_at", sort=True):
+            v = gr.set_index("target")["yoy"]
+            key = pd.Timestamp(rk).isoformat(timespec="seconds")
+            nw = news[(news["run_at"] == key) & (news["target"] == "core") & (news["month"] == f"{m:%Y-%m}")]
+            nw = nw[nw["contrib"].abs() >= 0.005].sort_values("contrib", key=abs, ascending=False)
+            p = prev_of[rk]
+            if p is None:
+                drivers, got = "初回", "初回（全データ取得）"
+            else:
+                drivers = "、".join(f"{i} {c:+.2f}" for i, c in zip(nw["item"], nw["contrib"])) or "変化なし"
+                if p not in arr_cache:
+                    arr_cache[p] = describe_arrivals(vintage.arrivals(p, rk, con=con))
+                got = arr_cache[p]
+            change = "—" if prev_core is None else f"{v.get('core') - prev_core:+.1f}"
+            cells = [f"{v.get(k):+.1f}" if k in v else "" for k in keys]
+            cells[1] = f"**{cells[1]}**"
+            rows.append(f"| {pd.Timestamp(rk):%Y-%m-%d %H:%M} | {cells[0]} | {cells[1]} | {change} | "
+                        f"{cells[2]} | {cells[3]} | {cells[4]} | {drivers} | {got} |")
+            prev_core = v.get("core")
+        lines += rows[::-1] + [""]
+    con.close()
+    path = os.path.join(out_dir, "HISTORY.md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path
+
+
+def backfill(model: str):
+    """Compute the news decomposition for logged runs that have none (from the stored vintages)."""
+    from . import data, news as nws
+    con = vintage.connect()
+    runs = vintage.runs(con=con)
+    runs = runs[runs["model"].str.split("-").str[0] == model]
+    have = set(vintage.news_log(con=con)["run_at"])
+
+    def ds_at(t):
+        fr = {p: vintage.load_asof(pd.Timestamp(t).date(), p, con=con)
+              for p in ("nat:", "tky:", "boj:", "wk:", "veg:", "yoy:")}
+        return data.from_frames(fr).cut(pd.Timestamp(t).normalize() + pd.Timedelta(hours=23))
+
+    prev = None
+    for rk in sorted(runs["run_at"].unique()):
+        key = pd.Timestamp(rk).isoformat(timespec="seconds")
+        if key not in have:
+            if prev is None:
+                vintage.log_news(key, model, "core", "初回", None, con=con)
+            else:
+                nw = nws.decompose(ds_at(prev), ds_at(rk), "core")
+                vintage.log_news(key, model, "core", f"前回 {pd.Timestamp(prev).isoformat(timespec='seconds')}",
+                                 nw, con=con)
+            print(f"[history] news {key}")
+        prev = rk
+    con.close()

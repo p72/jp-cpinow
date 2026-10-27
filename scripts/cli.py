@@ -151,6 +151,15 @@ def update_readme(fc, point: str, asof, path: str = README, hist: dict | None = 
     return True
 
 
+def _last_run():
+    """run_at of the most recent logged run (any day), or None."""
+    try:
+        r = vintage.runs()
+    except Exception:
+        return None
+    return None if r.empty else r["run_at"].iloc[-1]
+
+
 def cmd_forecast(a):
     if a.asof:
         ds = _load_vintage(a.asof)
@@ -158,7 +167,7 @@ def cmd_forecast(a):
         ds = data.fetch()
         if not a.no_save:
             n = sum(vintage.save_snapshot(df, prefix=p) for p, df in data.to_frames(ds).items())
-            print(f"[vintage] {date.today()} snapshot: {n} new/revised values -> {vintage.home()}")
+            print(f"[vintage] {vintage.now_jst():%Y-%m-%d} snapshot: {n} new/revised values -> {vintage.home()}")
             if a.only_if_new and n == 0:
                 print("[forecast] no new data since the last snapshot -> nothing to do")
                 return None
@@ -171,7 +180,7 @@ def cmd_forecast(a):
 
     nw, nw_label = None, ""
     try:
-        prev = None if a.asof else vintage.last_run_before(date.today())
+        prev = None if a.asof else _last_run()
         if prev is not None:
             old = _load_vintage(prev.date())
             nw = news.decompose(old, ds, "core")
@@ -181,8 +190,11 @@ def cmd_forecast(a):
         print(f"[news] failed: {ex}")
 
     if not a.asof and not a.no_save:
-        vintage.log_run(fc, MODEL)
+        run_at = vintage.log_run(fc, MODEL)
+        basis = "初回" if prev is None else f"前回 {pd.Timestamp(prev).isoformat(timespec='seconds')}"
+        vintage.log_news(run_at, MODEL, "core", basis, nw)
         vintage.runs().to_csv(os.path.join(vintage.home(), "runs.csv"), index=False, encoding="utf-8-sig")
+        print(f"[history] {history.build_md(MODEL)}")
     if a.out:
         os.makedirs(a.out, exist_ok=True)
         stamp = f"{pd.Timestamp(ds.asof):%Y%m%d}"
@@ -252,7 +264,12 @@ def _history(ds, fc, a) -> dict | None:
 
 
 def cmd_history(a):
-    """Print how the forecasts moved and draw output/history.png (uses the stored vintage)."""
+    """Print how the forecasts moved and draw output/history.png (uses the stored vintage).
+    --md: rebuild data/HISTORY.md (computing missing news decompositions first)."""
+    if a.md:
+        history.backfill(MODEL)
+        print(f"[history] {history.build_md(MODEL)}")
+        return
     ds = _load_vintage(a.asof or pd.Timestamp.today().date())
     fc = forecast.run(ds)
     hist = _history(ds, fc, a)
@@ -288,6 +305,7 @@ def main(argv=None):
     hp.add_argument("--target", choices=[k for k, _, _ in config.TARGETS])
     hp.add_argument("--out")
     hp.add_argument("--no-recon", action="store_true")
+    hp.add_argument("--md", action="store_true", help="data/HISTORY.md を作り直す")
     f.add_argument("--no-recon", action="store_true", help="skip the reconstructed history")
     a = p.parse_args(argv)
     {"forecast": cmd_forecast, "backtest": cmd_backtest, "bands": cmd_bands,

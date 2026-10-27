@@ -7,6 +7,8 @@ Tables
                                            new or revised (diff storage)
   runs(run_at, asof, T, target, month, h, yoy, model, components)
                                          -- one row per target × month per forecast run
+  news(run_at, model, target, month, basis, item, contrib)
+                                         -- news decomposition of each run vs the previous one
 Series names carry a prefix per source ("nat:0001", "tky:0161", "boj:imp_crude", "wk:gasoline_weekly").
 """
 from __future__ import annotations
@@ -14,7 +16,15 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from datetime import date, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+JST = ZoneInfo("Asia/Tokyo")
+
+
+def now_jst() -> datetime:
+    """Run timestamps and vintage dates are always Japan time (GitHub runs in UTC by default)."""
+    return datetime.now(JST).replace(tzinfo=None)
 
 import numpy as np
 import pandas as pd
@@ -31,6 +41,9 @@ CREATE INDEX IF NOT EXISTS obs_series_vintage ON obs(series, vintage);
 CREATE TABLE IF NOT EXISTS runs (
   run_at TEXT NOT NULL, asof TEXT, T TEXT, target TEXT, month TEXT, h INTEGER,
   yoy REAL, model TEXT, components TEXT
+);
+CREATE TABLE IF NOT EXISTS news (
+  run_at TEXT NOT NULL, model TEXT, target TEXT, month TEXT, basis TEXT, item TEXT, contrib REAL
 );
 """
 
@@ -58,7 +71,7 @@ def save_snapshot(df: pd.DataFrame, vintage=None, prefix: str = "",
                   con: sqlite3.Connection | None = None, rtol: float = 1e-9) -> int:
     """Store the columns of `df` (index = ref dates) as published on `vintage`
     (default today). Only new or changed values are written. Returns rows added."""
-    vintage = str(pd.Timestamp(vintage or date.today()).date())
+    vintage = str(pd.Timestamp(vintage or now_jst()).date())
     own = con is None
     con = con or connect()
     added = 0
@@ -100,10 +113,11 @@ def load_asof(asof, prefix: str, con: sqlite3.Connection | None = None) -> pd.Da
     return df.sort_index()
 
 
-def log_run(fc, model_name: str, con: sqlite3.Connection | None = None):
+def log_run(fc, model_name: str, con: sqlite3.Connection | None = None) -> str:
+    """Store the forecast; returns the run_at key (also used by log_news)."""
     own = con is None
     con = con or connect()
-    now = datetime.now().isoformat(timespec="seconds")
+    now = now_jst().isoformat(timespec="seconds")
     comp = fc.contributions("headline")
     rows = []
     for h, m in enumerate(fc.targets.index, start=1):
@@ -116,6 +130,57 @@ def log_run(fc, model_name: str, con: sqlite3.Connection | None = None):
     con.commit()
     if own:
         con.close()
+    return now
+
+
+def log_news(run_at: str, model_name: str, target: str, basis: str, nw: pd.DataFrame | None,
+             con: sqlite3.Connection | None = None):
+    """nw: news.decompose output (rows = 統計 incl. 合計, columns = YYYY-MM months)."""
+    own = con is None
+    con = con or connect()
+    rows = []
+    if nw is None or nw.empty:
+        rows.append((run_at, model_name, target, None, basis, "（内訳なし）", 0.0))
+    else:
+        for _, r in nw[nw["統計"] != "合計"].iterrows():
+            for c in nw.columns:
+                if c != "統計" and r[c] == r[c]:
+                    rows.append((run_at, model_name, target, c, basis, r["統計"], float(r[c])))
+    con.executemany("INSERT INTO news VALUES (?,?,?,?,?,?,?)", rows)
+    con.commit()
+    if own:
+        con.close()
+
+
+def news_log(con: sqlite3.Connection | None = None) -> pd.DataFrame:
+    own = con is None
+    con = con or connect()
+    df = pd.read_sql("SELECT * FROM news ORDER BY run_at", con)
+    if own:
+        con.close()
+    return df
+
+
+def arrivals(prev_run_at, run_at, con: sqlite3.Connection | None = None) -> pd.DataFrame:
+    """Values stored after the day of `prev_run_at` up to the day of `run_at`, per series:
+    new reference dates vs revisions of existing ones. prev_run_at=None → everything."""
+    own = con is None
+    con = con or connect()
+    hi = str(pd.Timestamp(run_at).date())
+    lo = str(pd.Timestamp(prev_run_at).date()) if prev_run_at is not None else "0000-00-00"
+    df = pd.read_sql("SELECT series, ref_date, vintage FROM obs WHERE vintage > ? AND vintage <= ?",
+                     con, params=(lo, hi))
+    out = []
+    for s, g in df.groupby("series"):
+        older = pd.read_sql("SELECT DISTINCT ref_date FROM obs WHERE series = ? AND vintage <= ?",
+                            con, params=(s, lo))
+        known = set(older["ref_date"])
+        refs = sorted(set(g["ref_date"]))
+        out.append(dict(series=s, new=[d for d in refs if d not in known],
+                        revised=[d for d in refs if d in known], new_series=not known))
+    if own:
+        con.close()
+    return pd.DataFrame(out, columns=["series", "new", "revised", "new_series"])
 
 
 def runs(con: sqlite3.Connection | None = None) -> pd.DataFrame:

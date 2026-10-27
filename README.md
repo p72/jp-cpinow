@@ -11,6 +11,8 @@
 
 ## 最新の予測
 
+更新のたびの予測の変化と、その理由は [data/HISTORY.md](data/HISTORY.md) に記録しています。
+
 <!-- forecast:start -->
 
 | 前年同月比（%） | 2026年7月<br>実績 | 2026年8月<br>実績 | 2026年9月<br>実績 | **2026年10月**<br>予測 h=1 | **2026年11月**<br>予測 h=2 | **2026年12月**<br>予測 h=3 |
@@ -86,6 +88,7 @@ python -m scripts.cli bands                      # 予測区間テーブルを�
 - `output/latest.png`：1枚まとめのレポート（直近3か月の公表値＋3か月先の予測と90%区間、寄与度、予測の推移、入力データ、制度要因、公表予定）
 - `output/forecast.csv`：直近3か月の実績（公表値）と予測（90%区間つき）
 - `output/forecast_contributions.csv`：総合の前年比の品目グループ別寄与度
+- `data/HISTORY.md`：**予測の変化の記録**。自動実行のたびに、5系列の予測・コアの変化・変化の主な要因（どのデータで何pt動いたか）・新しく入ったデータを対象月ごとに追記（`data/news_log.csv` に要因の内訳）
 - `output/history.png` / `history.csv`：**予測の推移**。対象月ごとに、予測が更新のたびにどう動いたか（塗り＝自動実行の記録、白抜き＝過去の公表日に切り戻して再計算した参考値、★＝公表値）。`python -m scripts.cli history --target core` で表も出せる
 
 ## データの出典と利用条件
