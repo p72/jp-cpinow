@@ -48,7 +48,7 @@ def _fmt(v):
 
 def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFrame | None = None,
                 news_label: str = "", inputs: list | None = None,
-                model_name: str = "v1"):
+                model_name: str = "v1", recon: pd.DataFrame | None = None):
     jp = _font()
     asof = pd.Timestamp(fc.asof or pd.Timestamp.today()).normalize()
     point = bands.point_of(asof, fc.T)
@@ -140,21 +140,37 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
 
     # ------------------------------------------------------------- evolution
     ax = fig.add_subplot(gs[2, 0])
-    ax.set_title(f"{m1.year}年{m1.month}月分の予測の推移（塗り＝実際の記録）", fontsize=12, color=INK, loc="left")
+    ax.set_title(f"{m1.year}年{m1.month}月分の予測の推移（白抜き＝再構成・参考、塗り＝実際の記録）",
+                 fontsize=12, color=INK, loc="left")
     drawn = False
-    if runs is not None and not runs.empty:
-        r = runs[runs["month"] == str(m1.date())].copy()
-        r["d"] = pd.to_datetime(r["run_at"]).dt.normalize()
-        for k, color in [("headline", INK2), ("corecore", SLOTS[2]), ("core", BLUE)]:
-            s = r[r["target"] == k].groupby("d")["yoy"].last()
-            if len(s):
-                ax.plot(s.index, s.values, color=color, lw=2, marker="o", ms=7, label=config.SHORT[k])
-                ax.annotate(f"{s.iloc[-1]:+.1f}", (s.index[-1], s.iloc[-1]), textcoords="offset points",
-                            xytext=(8, 0), va="center", fontsize=9, color=INK)
+    for k, color in [("headline", INK2), ("corecore", SLOTS[2]), ("core", BLUE)]:
+        last = None
+        if recon is not None and not recon.empty:
+            q = recon[(recon["month"] == m1) & (recon["target"] == k)].sort_values("date")
+            if runs is not None and not runs.empty:   # reconstructed points only before the first record
+                first = pd.to_datetime(runs["run_at"]).min().normalize()
+                q = q[q["date"] < first]
+            if len(q):
+                ax.plot(q["date"], q["yoy"], color=color, lw=1.3, ls="--", marker="o", ms=6,
+                        mfc="white", mew=1.4)
+                last = (q["date"].iloc[-1], q["yoy"].iloc[-1])
                 drawn = True
+        if runs is not None and not runs.empty:
+            r = runs[runs["month"] == str(m1.date())].copy()
+            r["d"] = pd.to_datetime(r["run_at"]).dt.normalize()
+            sr = r[r["target"] == k].groupby("d")["yoy"].last()
+            if len(sr):
+                ax.plot(sr.index, sr.values, color=color, lw=2, marker="o", ms=7, label=config.SHORT[k])
+                last = (sr.index[-1], sr.iloc[-1])
+                drawn = True
+            elif last is not None:
+                ax.plot([], [], color=color, lw=2, marker="o", ms=7, label=config.SHORT[k])
+        if last is not None:
+            ax.annotate(f"{last[1]:+.1f}", last, textcoords="offset points", xytext=(8, 0), va="center",
+                        fontsize=9, color=INK)
     if drawn:
         nat_rel = m1 + pd.offsets.MonthBegin(1) + pd.Timedelta(days=release.NAT_DAY - 1)
-        start = m1 - pd.offsets.MonthBegin(1) + pd.offsets.MonthBegin(1) + pd.Timedelta(days=release.NAT_DAY - 2)
+        start = m1 - pd.offsets.MonthBegin(2) + pd.Timedelta(days=release.NAT_DAY - 2)
         ax.set_xlim(min(start, asof - pd.Timedelta(days=2)), nat_rel + pd.Timedelta(days=3))
         lo_y, hi_y = ax.get_ylim()
         mid = (lo_y + hi_y) / 2
@@ -162,7 +178,7 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
         ax.set_ylim(mid - half, mid + half)
         ax.axvline(nat_rel, color=MUTED, lw=0.8, ls=":")
         ax.text(nat_rel, mid - half, " 全国CPI公表", fontsize=8.5, color=MUTED, va="bottom", ha="right")
-        ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.FR))
+        ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.FR, interval=2))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%-m/%-d"))
         ax.set_ylabel("前年比（%）", fontsize=9)
         ax.legend(frameon=False, fontsize=8.5, loc="upper left", ncol=3)
@@ -259,4 +275,73 @@ def plot_report(fc, path: str, runs: pd.DataFrame | None = None, news: pd.DataFr
              "このサービスは、政府統計総合窓口(e-Stat)のAPI機能を使用していますが、サービスの内容は国によって保証されたものではありません。",
              fontsize=8.5, color=MUTED)
     fig.savefig(path, dpi=120, facecolor="white")
+    plt.close(fig)
+
+
+def plot_history(rec: pd.DataFrame, recon: pd.DataFrame, actual: pd.DataFrame | None, months, path: str,
+                 asof=None):
+    """One panel per series: how the forecast for each target month moved over time.
+    Hollow/dashed = reconstruction (reference), filled/solid = actual records, ★ = published."""
+    _font()
+    months = list(pd.DatetimeIndex(months))
+    fig, axes = plt.subplots(len(config.TARGETS), 1, figsize=(12, 3.0 * len(config.TARGETS)), sharex=True)
+    fig.patch.set_facecolor("white")
+    first_rec = rec["date"].min() if rec is not None and len(rec) else None
+    for ax, (k, _, label) in zip(axes, config.TARGETS):
+        labels = []
+        for m, color in zip(months, SLOTS):
+            pts = []
+            if recon is not None and len(recon):
+                q = recon[(recon["month"] == m) & (recon["target"] == k)].sort_values("date")
+                if first_rec is not None:
+                    q = q[q["date"] < first_rec]
+                if len(q):
+                    ax.plot(q["date"], q["yoy"], color=color, lw=1.2, ls="--", marker="o", ms=5,
+                            mfc="white", mew=1.3)
+                    pts.append((q["date"].iloc[-1], q["yoy"].iloc[-1]))
+            if rec is not None and len(rec):
+                r = rec[(rec["month"] == m) & (rec["target"] == k)].sort_values("date")
+                if len(r):
+                    ax.plot(r["date"], r["yoy"], color=color, lw=2, marker="o", ms=6)
+                    pts.append((r["date"].iloc[-1], r["yoy"].iloc[-1]))
+            pub = None
+            if actual is not None and m in actual.index and actual.loc[m, k] == actual.loc[m, k]:
+                pub_d = m + pd.offsets.MonthBegin(1) + pd.Timedelta(days=release.NAT_DAY - 1)
+                pub = (pub_d, float(actual.loc[m, k]))
+                ax.plot([pub_d], [pub[1]], marker="*", ms=13, color=color, mec=INK, mew=0.6, ls="none")
+            if pub is not None:
+                ax.annotate(f"{m.month}月 {pub[1]:+.1f}（公表）", pub, textcoords="offset points",
+                            xytext=(-6, -11), ha="right", va="center", fontsize=8, color=INK2,
+                            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.85))
+            elif pts:
+                labels.append((pts[-1][0], pts[-1][1], f"{m.month}月 {pts[-1][1]:+.1f}"))
+        # right-edge labels of the open target months: spread them so they never overlap
+        if labels:
+            lo_y, hi_y = ax.get_ylim()
+            gap = (hi_y - lo_y) * 0.09
+            labels.sort(key=lambda t: t[1])
+            ys = [labels[0][1]]
+            for _, yv, _ in labels[1:]:
+                ys.append(max(yv, ys[-1] + gap))
+            for (xv, yv, txt), yl in zip(labels, ys):
+                ax.annotate(txt, (xv, yv), xytext=(xv + pd.Timedelta(days=4), yl), textcoords="data",
+                            va="center", fontsize=8.5, color=INK, annotation_clip=False)
+            ax.set_ylim(lo_y, max(hi_y, ys[-1] + gap / 2))
+        ax.set_title(f"{config.SHORT[k]}　対象月ごとの予測の推移", fontsize=11, color=INK, loc="left")
+        ax.set_ylabel("前年比（%）", fontsize=9)
+        ax.grid(axis="y", color=GRID); ax.set_axisbelow(True)
+        ax.spines[["top", "right"]].set_visible(False)
+    from matplotlib.lines import Line2D
+    handles = [Line2D([], [], color=c, lw=2, label=f"{m.year % 100}年{m.month}月分") for m, c in zip(months, SLOTS)]
+    handles += [Line2D([], [], color=INK2, lw=1.2, ls="--", marker="o", mfc="white", label="再構成（参考）"),
+                Line2D([], [], color=INK2, lw=2, marker="o", label="実際の記録"),
+                Line2D([], [], color=INK2, marker="*", ms=12, ls="none", label="公表値")]
+    axes[0].legend(handles=handles, frameon=False, fontsize=8.5, ncol=5, loc="lower left",
+                   bbox_to_anchor=(0, 1.15))
+    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%-m/%-d"))
+    stamp = f"データ時点 {pd.Timestamp(asof or pd.Timestamp.today()):%Y-%m-%d}　" if asof is not None else ""
+    fig.text(0.01, 0.005, stamp + "再構成＝過去の公表日時点に切り戻したデータでモデルを再実行した参考値"
+             "（当時の実際の予測ではない）。★＝総務省の公表値（全国CPI公表日に表示）。", fontsize=8.5, color=MUTED)
+    fig.tight_layout(rect=(0, 0.015, 0.93, 0.97))
+    fig.savefig(path, dpi=110, facecolor="white")
     plt.close(fig)

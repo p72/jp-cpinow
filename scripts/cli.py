@@ -18,7 +18,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from . import backtest, bands, config, cpi, data, forecast, news, plots, policy, vintage
+from . import backtest, bands, config, cpi, data, forecast, history, news, plots, policy, vintage
 
 MODEL = "v1"
 
@@ -90,7 +90,30 @@ README = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 MARK_START, MARK_END = "<!-- forecast:start -->", "<!-- forecast:end -->"
 
 
-def readme_table(fc, point: str, asof) -> str:
+def history_md(fc, hist: dict | None, target: str = "core", n_rows: int = 8) -> list[str]:
+    """README lines: how the forecast for the current target months moved (one series)."""
+    if not hist:
+        return []
+    t = history.table(hist["rec"], hist["recon"], fc.actual, target, months=hist["months"])
+    if t.empty:
+        return []
+    pub = t.loc[["公表値"]] if "公表値" in t.index else None
+    body = t.drop(index="公表値", errors="ignore").tail(n_rows)
+    if pub is not None:
+        body = pd.concat([body, pub])
+    cols = list(body.columns)
+    out = [f"**{config.SHORT[target]}の予測の推移**（対象月ごと、前年比%。（再構成）は過去の公表日に切り戻して"
+           "再計算した参考値、（記録）は自動実行で実際に出した予測。グラフは `output/history.png`）", "",
+           "| 時点 | " + " | ".join(f"{c[:4]}年{int(c[5:])}月分" for c in cols) + " |",
+           "|---|" + "---:|" * len(cols)]
+    for idx, row in body.iterrows():
+        cells = ["" if v != v else f"{v:+.1f}" for v in row]
+        name = f"**{idx}**" if idx == "公表値" else idx
+        out.append(f"| {name} | " + " | ".join(cells) + " |")
+    return out
+
+
+def readme_table(fc, point: str, asof, hist: dict | None = None) -> str:
     """Markdown block for README: rows = 5 series, columns = 3 published months + h=1..3."""
     act = fc.recent(3)
     head = ["前年同月比（%）"] + [f"{m.year}年{m.month}月<br>実績" for m in act.index] \
@@ -109,17 +132,19 @@ def readme_table(fc, point: str, asof) -> str:
             "実績は総務省の公表値、［ ］は90%区間（政策の不確実性は含まない）。自動実行のたびに更新。")
     pre = ["**予測の前提（政策）**　※発表があれば `scripts/policy.csv` に追記して更新"]
     pre += [f"- {x}" for x in policy.assumptions(fc.targets.index, asof)]
-    return "\n".join([MARK_START, "", *lines, "", note, "", *pre, "", MARK_END])
+    hl = history_md(fc, hist)
+    hl = [*hl, "", "![予測の推移](output/history.png)", ""] if hl else []
+    return "\n".join([MARK_START, "", *lines, "", note, "", *pre, "", *hl, MARK_END])
 
 
-def update_readme(fc, point: str, asof, path: str = README) -> bool:
+def update_readme(fc, point: str, asof, path: str = README, hist: dict | None = None) -> bool:
     if not os.path.exists(path):
         return False
     text = open(path, encoding="utf-8").read()
     if MARK_START not in text or MARK_END not in text:
         return False
     i, j = text.index(MARK_START), text.index(MARK_END) + len(MARK_END)
-    new = text[:i] + readme_table(fc, point, asof) + text[j:]
+    new = text[:i] + readme_table(fc, point, asof, hist) + text[j:]
     if new != text:
         with open(path, "w", encoding="utf-8") as f:
             f.write(new)
@@ -161,8 +186,9 @@ def cmd_forecast(a):
     if a.out:
         os.makedirs(a.out, exist_ok=True)
         stamp = f"{pd.Timestamp(ds.asof):%Y%m%d}"
+        hist = _history(ds, fc, a)
         _result_table(fc, point, text=False).to_csv(os.path.join(a.out, "forecast.csv"), encoding="utf-8-sig")
-        if update_readme(fc, point, ds.asof):
+        if update_readme(fc, point, ds.asof, hist=hist):
             print("[readme] 予測の表を更新")
         fc.contributions("headline").round(3).to_csv(os.path.join(a.out, "forecast_contributions.csv"),
                                                     encoding="utf-8-sig")
@@ -174,7 +200,12 @@ def cmd_forecast(a):
             runs = None
         rp = os.path.join(a.out, f"report_{fc.targets.index[0]:%Y%m}_{stamp}.png")
         plots.plot_report(fc, rp, runs=runs, news=nw, news_label=nw_label, inputs=_inputs(ds, fc),
-                          model_name=MODEL)
+                          model_name=MODEL, recon=hist["recon"] if hist else None)
+        if hist:
+            plots.plot_history(hist["rec"], hist["recon"], fc.actual, hist["months"],
+                               os.path.join(a.out, "history.png"), asof=ds.asof)
+            hist["all"].to_csv(os.path.join(a.out, "history.csv"), index=False, encoding="utf-8-sig")
+            print("[history] output/history.png, history.csv")
         shutil.copyfile(rp, os.path.join(a.out, "latest.png"))
         print(f"[report] {rp}")
     return fc
@@ -198,11 +229,46 @@ def cmd_bands(a):
     print(bands.build(bt).round(3).to_string(index=False))
 
 
+def _history(ds, fc, a) -> dict | None:
+    """Records + (cached) reconstruction for target months T-2..T+3."""
+    if getattr(a, "no_recon", False):
+        recon = pd.DataFrame()
+    else:
+        try:
+            recon = history.reconstruct(ds, MODEL, n_months=6, until=ds.asof)
+        except Exception as ex:
+            print(f"[history] reconstruction failed: {ex}")
+            recon = pd.DataFrame()
+    rec = history.records(MODEL)
+    months = pd.date_range(fc.T - pd.offsets.MonthBegin(2), periods=6, freq="MS")
+    parts = []
+    for src, df in (("記録", rec), ("再構成", recon)):
+        if df is not None and len(df):
+            parts.append(df.assign(種類=src)[["種類", "date", "month", "target", "yoy"]])
+    if not parts:
+        return None
+    allh = pd.concat(parts).sort_values(["target", "month", "date"])
+    return {"rec": rec, "recon": recon, "months": months, "all": allh}
+
+
 def cmd_history(a):
-    r = vintage.runs()
-    if r.empty:
-        raise SystemExit("no logged runs yet")
-    print(r.pivot_table(index=["run_at", "month"], columns="target", values="yoy").to_string())
+    """Print how the forecasts moved and draw output/history.png (uses the stored vintage)."""
+    ds = _load_vintage(a.asof or pd.Timestamp.today().date())
+    fc = forecast.run(ds)
+    hist = _history(ds, fc, a)
+    if not hist:
+        raise SystemExit("no history yet")
+    for k, _, _ in config.TARGETS:
+        if a.target and k != a.target:
+            continue
+        print(f"--- {config.SHORT[k]}（前年比%）")
+        print(history.table(hist["rec"], hist["recon"], fc.actual, k, months=hist["months"]).to_string())
+    out = a.out or "output"
+    os.makedirs(out, exist_ok=True)
+    plots.plot_history(hist["rec"], hist["recon"], fc.actual, hist["months"], os.path.join(out, "history.png"),
+                       asof=ds.asof)
+    hist["all"].to_csv(os.path.join(out, "history.csv"), index=False, encoding="utf-8-sig")
+    print(f"[history] {out}/history.png")
 
 
 def main(argv=None):
@@ -217,7 +283,12 @@ def main(argv=None):
         b = sub.add_parser(name)
         b.add_argument("--start", default="2015-01-01")
         b.add_argument("--out")
-    sub.add_parser("history")
+    hp = sub.add_parser("history", help="予測の推移（記録＋再構成）の表とグラフ")
+    hp.add_argument("--asof")
+    hp.add_argument("--target", choices=[k for k, _, _ in config.TARGETS])
+    hp.add_argument("--out")
+    hp.add_argument("--no-recon", action="store_true")
+    f.add_argument("--no-recon", action="store_true", help="skip the reconstructed history")
     a = p.parse_args(argv)
     {"forecast": cmd_forecast, "backtest": cmd_backtest, "bands": cmd_bands,
      "history": cmd_history}[a.cmd](a)
